@@ -1,0 +1,1943 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SIGNAL LAB — Market Intelligence</title>
+
+  <!-- ============================================================
+       SIGNAL LAB — Single-file crypto intelligence dashboard
+       Built for: Webzy / Project WildRose stack
+       APIs: CoinGecko (prices/dominance), Alternative.me (F&G)
+       Currency: GBP (£)
+       Fallback: sample data if APIs are unavailable
+       Easter egg: Konami Code ↑↑↓↓←→←→BA
+       ============================================================ -->
+
+  <!-- Konami easter egg overlay styles -->
+  <style>
+    /* ============================================================
+       KONAMI CODE EASTER EGG — SECRET PANEL
+       ============================================================ */
+    #konamiOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 0;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+    }
+    #konamiOverlay.active {
+      opacity: 1;
+      pointer-events: all;
+    }
+    /* Scanline effect */
+    #konamiOverlay::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(200,16,46,0.04) 2px,
+        rgba(200,16,46,0.04) 4px
+      );
+      pointer-events: none;
+      z-index: 1;
+    }
+    .konami-inner {
+      position: relative;
+      z-index: 2;
+      text-align: center;
+      padding: 40px;
+      max-width: 600px;
+    }
+    .konami-title {
+      font-size: 11px;
+      letter-spacing: 0.4em;
+      color: #c8102e;
+      margin-bottom: 20px;
+      animation: kFlicker 3s infinite;
+    }
+    .konami-rose {
+      font-size: 80px;
+      line-height: 1;
+      margin-bottom: 16px;
+      animation: kPulseRose 2s ease-in-out infinite;
+      filter: drop-shadow(0 0 20px #c8102e);
+    }
+    .konami-big {
+      font-size: 22px;
+      letter-spacing: 0.15em;
+      color: #e8eaf2;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+    .konami-sub {
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      color: #4a5068;
+      margin-bottom: 32px;
+    }
+    .konami-lines {
+      font-size: 12px;
+      color: #7a8099;
+      line-height: 2.2;
+      text-align: left;
+      border-left: 2px solid #c8102e33;
+      padding-left: 16px;
+      margin-bottom: 32px;
+    }
+    .konami-lines span { color: #c8102e; }
+    .konami-sequence {
+      font-size: 14px;
+      letter-spacing: 0.1em;
+      color: #d4a843;
+      margin-bottom: 24px;
+    }
+    .konami-close {
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      padding: 10px 24px;
+      border: 1px solid #c8102e;
+      background: transparent;
+      color: #c8102e;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: all 0.2s;
+    }
+    .konami-close:hover {
+      background: #c8102e;
+      color: #000;
+    }
+    /* Falling rose petals */
+    .petal {
+      position: absolute;
+      font-size: 16px;
+      opacity: 0;
+      animation: petalFall linear infinite;
+      pointer-events: none;
+      z-index: 0;
+    }
+    @keyframes petalFall {
+      0%   { transform: translateY(-20px) rotate(0deg); opacity: 0.7; }
+      100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+    }
+    @keyframes kFlicker {
+      0%, 95%, 100% { opacity: 1; }
+      96% { opacity: 0.2; }
+      98% { opacity: 0.8; }
+    }
+    @keyframes kPulseRose {
+      0%, 100% { transform: scale(1);    filter: drop-shadow(0 0 20px #c8102e); }
+      50%       { transform: scale(1.08); filter: drop-shadow(0 0 40px #e03050); }
+    }
+    /* Hint text in footer area */
+    .konami-hint {
+      position: fixed;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'Courier New', monospace;
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      color: var(--text-dim);
+      opacity: 0.3;
+      pointer-events: none;
+      z-index: 2;
+    }
+  </style>
+
+  <style>
+    /* ============================================================
+       CSS VARIABLES — Edit these to retheme the entire dashboard
+       ============================================================ */
+    :root {
+      --bg:          #0a0b0f;
+      --bg2:         #0f1117;
+      --bg3:         #151821;
+      --surface:     #1a1d28;
+      --surface2:    #202435;
+      --border:      #2a2e42;
+      --border-glow: #c8102e44;
+
+      --rose:        #c8102e;
+      --rose-soft:   #e03050;
+      --gold:        #d4a843;
+      --gold-soft:   #f0c060;
+      --teal:        #1fb8a8;
+      --teal-soft:   #30d4c0;
+      --amber:       #e07820;
+      --purple:      #7c5cbf;
+
+      --text:        #e8eaf2;
+      --text-muted:  #7a8099;
+      --text-dim:    #4a5068;
+
+      --green:       #22c97a;
+      --green-soft:  #1a9a5e;
+      --red:         #e03050;
+      --red-soft:    #a82030;
+      --yellow:      #d4a843;
+      --neutral:     #7a8099;
+
+      --radius:      10px;
+      --radius-sm:   6px;
+      --shadow:      0 4px 24px #00000066;
+      --shadow-glow: 0 0 32px #c8102e18;
+
+      --font-head:   'Courier New', 'Lucida Console', monospace;
+      --font-body:   'Georgia', 'Times New Roman', serif;
+      --font-mono:   'Courier New', monospace;
+    }
+
+    /* LIGHT THEME */
+    [data-theme="light"] {
+      --bg:          #f0f2f8;
+      --bg2:         #e8eaf2;
+      --bg3:         #dde0ec;
+      --surface:     #ffffff;
+      --surface2:    #f5f6fb;
+      --border:      #d0d4e8;
+      --border-glow: #c8102e33;
+      --text:        #1a1d28;
+      --text-muted:  #5a6080;
+      --text-dim:    #9aa0be;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    /* Subtle grid texture */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.08;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 16px 40px;
+    }
+
+    /* ============================================================
+       TYPOGRAPHY
+       ============================================================ */
+    h1, h2, h3, .label {
+      font-family: var(--font-head);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .section-title {
+      font-family: var(--font-head);
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ============================================================
+       CARDS
+       ============================================================ */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      box-shadow: var(--shadow);
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .card:hover {
+      border-color: var(--border-glow);
+      box-shadow: var(--shadow), var(--shadow-glow);
+    }
+
+    /* ============================================================
+       HEADER
+       ============================================================ */
+    .header {
+      padding: 24px 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+
+    .header-left h1 {
+      font-size: 26px;
+      font-family: var(--font-head);
+      letter-spacing: 0.15em;
+      color: var(--text);
+      line-height: 1;
+    }
+    .header-left h1 span { color: var(--rose); }
+    .header-sub {
+      font-family: var(--font-head);
+      font-size: 10px;
+      letter-spacing: 0.25em;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .last-updated {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    /* Status badge in header */
+    .mode-badge-mini {
+      font-family: var(--font-head);
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      padding: 5px 10px;
+      border-radius: 4px;
+      border: 1px solid;
+      transition: all 0.3s;
+    }
+
+    /* Buttons */
+    .btn {
+      font-family: var(--font-head);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      padding: 7px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s;
+      text-transform: uppercase;
+    }
+    .btn:hover {
+      border-color: var(--rose);
+      color: var(--rose);
+      background: var(--surface);
+    }
+    .btn.loading {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    /* ============================================================
+       LAYOUT GRIDS
+       ============================================================ */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .grid-auto { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .mb-24 { margin-bottom: 24px; }
+    .mb-16 { margin-bottom: 16px; }
+
+    @media (max-width: 900px) {
+      .grid-4 { grid-template-columns: repeat(2, 1fr); }
+      .grid-3 { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 600px) {
+      .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+      .header { flex-direction: column; align-items: flex-start; }
+    }
+
+    /* ============================================================
+       MARKET MODE ENGINE — Main hero panel
+       ============================================================ */
+    .mode-engine {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 28px;
+      box-shadow: var(--shadow);
+      margin-bottom: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .mode-engine::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, var(--rose) 0%, transparent 40%);
+      opacity: 0.04;
+      pointer-events: none;
+    }
+
+    .mode-inner {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 24px;
+      align-items: center;
+    }
+    @media (max-width: 700px) {
+      .mode-inner { grid-template-columns: 1fr; gap: 16px; }
+    }
+
+    .mode-state {
+      font-family: var(--font-head);
+      font-size: 32px;
+      letter-spacing: 0.1em;
+      line-height: 1;
+      font-weight: bold;
+    }
+
+    .mode-mid { }
+    .mode-explain {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.7;
+      max-width: 500px;
+    }
+
+    .mode-conf {
+      text-align: center;
+      min-width: 90px;
+    }
+    .conf-score {
+      font-family: var(--font-head);
+      font-size: 36px;
+      font-weight: bold;
+      line-height: 1;
+    }
+    .conf-label {
+      font-family: var(--font-head);
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    /* Bar meter */
+    .bar-wrap {
+      width: 100%;
+      height: 4px;
+      background: var(--bg3);
+      border-radius: 2px;
+      margin-top: 10px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.8s cubic-bezier(.4,0,.2,1);
+    }
+
+    /* ============================================================
+       BADGES / STATUS
+       ============================================================ */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-family: var(--font-head);
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      padding: 4px 9px;
+      border-radius: 3px;
+      border: 1px solid;
+      white-space: nowrap;
+    }
+    .badge::before {
+      content: '';
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+    }
+
+    /* Badge variants */
+    .badge-green  { color: var(--green);   border-color: var(--green-soft);  background: #22c97a0d; }
+    .badge-green::before  { background: var(--green); }
+    .badge-red    { color: var(--red);     border-color: var(--red-soft);    background: #e030500d; }
+    .badge-red::before    { background: var(--red); }
+    .badge-gold   { color: var(--gold);    border-color: #a07828;            background: #d4a8430d; }
+    .badge-gold::before   { background: var(--gold); }
+    .badge-teal   { color: var(--teal);    border-color: #147a70;            background: #1fb8a80d; }
+    .badge-teal::before   { background: var(--teal); }
+    .badge-amber  { color: var(--amber);   border-color: #a05010;            background: #e078200d; }
+    .badge-amber::before  { background: var(--amber); }
+    .badge-muted  { color: var(--text-muted); border-color: var(--border);   background: transparent; }
+    .badge-muted::before  { background: var(--text-muted); }
+    .badge-purple { color: var(--purple);  border-color: #5a3e9a;            background: #7c5cbf0d; }
+    .badge-purple::before { background: var(--purple); }
+
+    /* ============================================================
+       TREND CARDS (BTC / ETH / XRP / SOL)
+       ============================================================ */
+    .coin-card {}
+    .coin-symbol {
+      font-family: var(--font-head);
+      font-size: 12px;
+      letter-spacing: 0.2em;
+      color: var(--text-dim);
+    }
+    .coin-price {
+      font-family: var(--font-head);
+      font-size: 22px;
+      font-weight: bold;
+      margin: 6px 0 4px;
+      color: var(--text);
+    }
+    .coin-changes {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    .change-val {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    .change-pos { color: var(--green); background: #22c97a14; }
+    .change-neg { color: var(--red);   background: #e0305014; }
+    .change-neu { color: var(--text-muted); background: var(--bg3); }
+
+    .coin-trend-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 8px;
+      font-style: italic;
+    }
+
+    /* Strength meter */
+    .strength-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .strength-label {
+      font-family: var(--font-head);
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+
+    /* ============================================================
+       FEAR & GREED
+       ============================================================ */
+    .fg-dial {
+      position: relative;
+      width: 110px;
+      height: 60px;
+      margin: 0 auto 8px;
+    }
+    .fg-arc {
+      width: 110px;
+      height: 60px;
+    }
+
+    .fg-score {
+      font-family: var(--font-head);
+      font-size: 34px;
+      font-weight: bold;
+      text-align: center;
+      line-height: 1;
+    }
+    .fg-label {
+      font-family: var(--font-head);
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-align: center;
+      margin-top: 4px;
+    }
+    .fg-text {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: center;
+      margin-top: 10px;
+      font-style: italic;
+      line-height: 1.5;
+    }
+
+    /* ============================================================
+       WATCHLIST TABLE
+       ============================================================ */
+    .watchlist-wrap {
+      overflow-x: auto;
+      border-radius: var(--radius-sm);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead th {
+      font-family: var(--font-head);
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      color: var(--text-dim);
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      white-space: nowrap;
+      user-select: none;
+    }
+    thead th:hover { color: var(--text-muted); }
+    thead th.sorted { color: var(--rose); }
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+    tbody tr:hover { background: var(--surface2); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody td {
+      padding: 10px 12px;
+      vertical-align: middle;
+    }
+    .td-asset {
+      font-family: var(--font-head);
+      font-size: 12px;
+      letter-spacing: 0.1em;
+    }
+    .td-price {
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+    .td-comment {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    /* ============================================================
+       SIGNAL SUMMARY
+       ============================================================ */
+    .summary-lines {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .summary-line {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .summary-line::before {
+      content: '▸';
+      color: var(--rose);
+      font-size: 10px;
+      margin-top: 3px;
+      flex-shrink: 0;
+    }
+
+    /* ============================================================
+       XRP SPECIAL PANEL
+       ============================================================ */
+    .xrp-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 24px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+    .xrp-panel::after {
+      content: 'XRP';
+      position: absolute;
+      right: -8px;
+      bottom: -12px;
+      font-family: var(--font-head);
+      font-size: 72px;
+      color: var(--text);
+      opacity: 0.03;
+      pointer-events: none;
+      letter-spacing: 0.05em;
+    }
+
+    .xrp-main {
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .xrp-price-block { min-width: 120px; }
+    .xrp-price-val {
+      font-family: var(--font-head);
+      font-size: 28px;
+      font-weight: bold;
+      line-height: 1;
+    }
+    .xrp-body {
+      flex: 1;
+      min-width: 200px;
+    }
+    .xrp-paragraph {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.7;
+      margin-top: 10px;
+      font-style: italic;
+    }
+
+    /* ============================================================
+       LOADING / TOAST
+       ============================================================ */
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+      transition: opacity 0.4s;
+    }
+    .loading-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .loading-title {
+      font-family: var(--font-head);
+      font-size: 20px;
+      letter-spacing: 0.2em;
+      color: var(--rose);
+    }
+    .loading-sub {
+      font-family: var(--font-head);
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      color: var(--text-dim);
+    }
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 2px solid var(--border);
+      border-top-color: var(--rose);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--rose);
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-head);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      color: var(--text-muted);
+      transform: translateY(80px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(.4,0,.2,1);
+      z-index: 999;
+      pointer-events: none;
+    }
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    /* ============================================================
+       RISK / DOMINANCE / VOLATILITY SPECIFIC
+       ============================================================ */
+    .big-number {
+      font-family: var(--font-head);
+      font-size: 28px;
+      font-weight: bold;
+      line-height: 1;
+    }
+    .big-label {
+      font-family: var(--font-head);
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      color: var(--text-dim);
+      margin-top: 3px;
+    }
+    .panel-explain {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-top: 10px;
+      font-style: italic;
+    }
+
+    /* ============================================================
+       FOOTER
+       ============================================================ */
+    .footer {
+      margin-top: 32px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-dim);
+      text-align: center;
+      line-height: 1.7;
+    }
+    .footer strong { color: var(--text-muted); }
+
+    /* ============================================================
+       COLLAPSIBLE
+       ============================================================ */
+    .collapse-toggle {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-family: var(--font-head);
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      cursor: pointer;
+      padding: 4px 0;
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: color 0.2s;
+    }
+    .collapse-toggle:hover { color: var(--text-muted); }
+    .collapse-toggle .arrow { transition: transform 0.2s; display: inline-block; }
+    .collapse-toggle.open .arrow { transform: rotate(90deg); }
+    .collapse-body {
+      overflow: hidden;
+      max-height: 0;
+      transition: max-height 0.3s ease;
+    }
+    .collapse-body.open { max-height: 200px; }
+
+    /* ============================================================
+       SAMPLE DATA BANNER
+       ============================================================ */
+    .sample-banner {
+      background: var(--surface2);
+      border: 1px solid #a0601844;
+      border-radius: var(--radius-sm);
+      padding: 8px 14px;
+      font-family: var(--font-head);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      color: var(--amber);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .sample-banner.hidden { display: none; }
+
+    /* Pulse animation for live dot */
+    .pulse {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2s infinite;
+    }
+    .pulse.red { background: var(--red); animation: none; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.5; transform: scale(0.8); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ============================================================
+     KONAMI CODE EASTER EGG OVERLAY
+     Sequence: ↑ ↑ ↓ ↓ ← → ← → B A
+     ============================================================ -->
+<div id="konamiOverlay">
+  <div class="konami-inner">
+    <div class="konami-title">// CLASSIFIED — ACCESS GRANTED //</div>
+    <div class="konami-rose">🌹</div>
+    <div class="konami-big">Project WildRose</div>
+    <div class="konami-sub">SIGNAL LAB · COVERT INTELLIGENCE LAYER</div>
+    <div class="konami-lines">
+      <span>OPERATOR:</span> Webzy<br>
+      <span>CODENAME:</span> WildRose<br>
+      <span>SYSTEM:</span> Ghost Mode Active<br>
+      <span>STATUS:</span> The signal never sleeps.<br>
+      <span>DIRECTIVE:</span> Build the future. Hold the line.<br>
+      <span>NOTE:</span> Ren remembers everything.
+    </div>
+    <div class="konami-sequence">↑ ↑ ↓ ↓ ← → ← → B A</div>
+    <button class="konami-close" onclick="closeKonami()">[ CLOSE SECURE CHANNEL ]</button>
+  </div>
+</div>
+
+<!-- ============================================================
+     LOADING OVERLAY
+     ============================================================ -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-title">SIGNAL LAB</div>
+  <div class="spinner"></div>
+  <div class="loading-sub">LOADING MARKET DATA...</div>
+</div>
+
+<!-- ============================================================
+     TOAST NOTIFICATION
+     ============================================================ -->
+<div class="toast" id="toast"></div>
+
+<!-- ============================================================
+     MAIN WRAP
+     ============================================================ -->
+<div class="wrap">
+
+  <!-- ============================================================
+       HEADER
+       ============================================================ -->
+  <header class="header">
+    <div class="header-left">
+      <h1>SIGNAL<span>LAB</span></h1>
+      <div class="header-sub">MARKET INTELLIGENCE DASHBOARD</div>
+    </div>
+    <div class="header-right">
+      <span class="last-updated" id="lastUpdated">—</span>
+      <span class="pulse" id="liveDot"></span>
+      <div class="mode-badge-mini" id="headerModeBadge">—</div>
+      <button class="btn" id="refreshBtn" onclick="refreshData()">⟳ REFRESH</button>
+      <button class="btn" id="themeBtn" onclick="toggleTheme()">◑ THEME</button>
+    </div>
+  </header>
+
+  <!-- ============================================================
+       SAMPLE DATA BANNER (shown if APIs fail)
+       ============================================================ -->
+  <div class="sample-banner hidden" id="sampleBanner">
+    ⚠ LIVE DATA UNAVAILABLE — DISPLAYING SAMPLE DATA MODE. VALUES ARE NOT REAL-TIME.
+  </div>
+
+  <!-- ============================================================
+       SECTION 1: MARKET MODE ENGINE
+       ============================================================ -->
+  <div class="mb-16">
+    <div class="section-title">MARKET MODE ENGINE</div>
+  </div>
+  <div class="mode-engine mb-24">
+    <div class="mode-inner">
+      <div>
+        <div class="big-label">CURRENT MODE</div>
+        <div class="mode-state" id="modeState">—</div>
+        <div style="margin-top:10px" id="modeBadge"></div>
+      </div>
+      <div class="mode-mid">
+        <div class="panel-explain" id="modeExplain">Loading market analysis...</div>
+        <div class="bar-wrap" style="margin-top:12px; max-width:400px">
+          <div class="bar-fill" id="modeConfBar" style="width:0%; background: var(--rose)"></div>
+        </div>
+      </div>
+      <div class="mode-conf">
+        <div class="conf-score" id="confScore" style="color: var(--rose)">—</div>
+        <div class="conf-label">CONFIDENCE</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       SECTION 2: TREND PANELS (BTC / ETH / XRP / SOL)
+       ============================================================ -->
+  <div class="mb-16"><div class="section-title">TREND PANELS</div></div>
+  <div class="grid-4 mb-24" id="trendCards">
+    <!-- Injected by JS -->
+  </div>
+
+  <!-- ============================================================
+       SECTION 3: DOMINANCE + FEAR & GREED + VOLATILITY
+       ============================================================ -->
+  <div class="mb-16"><div class="section-title">RISK REGIME & SENTIMENT</div></div>
+  <div class="grid-3 mb-24">
+
+    <!-- BTC DOMINANCE PANEL -->
+    <div class="card">
+      <div class="big-label">BTC DOMINANCE</div>
+      <div class="big-number" id="btcDomValue" style="color: var(--gold)">—</div>
+      <div style="margin-top:8px" id="btcDomBadge"></div>
+      <div class="panel-explain" id="btcDomExplain">—</div>
+      <button class="collapse-toggle" onclick="toggleCollapse('domDetail',this)">
+        <span class="arrow">▶</span> MORE DETAIL
+      </button>
+      <div class="collapse-body" id="domDetail">
+        <div style="padding-top:8px; font-size:12px; color: var(--text-muted); font-style:italic" id="domDetailText"></div>
+      </div>
+    </div>
+
+    <!-- FEAR & GREED PANEL -->
+    <div class="card" style="text-align:center">
+      <div class="section-title" style="justify-content:center; margin-bottom:14px">FEAR & GREED INDEX</div>
+      <div class="fg-score" id="fgScore" style="color: var(--gold)">—</div>
+      <div class="fg-label" id="fgLabel">—</div>
+      <div class="fg-text" id="fgText">—</div>
+    </div>
+
+    <!-- VOLATILITY / MARKET PRESSURE PANEL -->
+    <div class="card">
+      <div class="big-label">MARKET PRESSURE</div>
+      <div class="big-number" id="voltState" style="color: var(--teal)">—</div>
+      <div style="margin-top:8px" id="voltBadge"></div>
+      <div class="panel-explain" id="voltExplain">—</div>
+    </div>
+
+  </div>
+
+  <!-- ============================================================
+       SECTION 4: XRP SPECIAL PANEL
+       ============================================================ -->
+  <div class="mb-16"><div class="section-title">XRP — FOCUSED WATCH</div></div>
+  <div class="xrp-panel mb-24">
+    <div class="xrp-main">
+      <div class="xrp-price-block">
+        <div class="coin-symbol">XRP / USD</div>
+        <div class="xrp-price-val" id="xrpPriceBig">—</div>
+        <div style="margin-top:8px" id="xrpChangeBig"></div>
+        <div style="margin-top:12px" id="xrpStatusTag"></div>
+      </div>
+      <div class="xrp-body">
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:6px" id="xrpBadges"></div>
+        <div class="xrp-paragraph" id="xrpParagraph">Loading XRP analysis...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       SECTION 5: WATCHLIST TABLE
+       ============================================================ -->
+  <div class="mb-16"><div class="section-title">WATCHLIST</div></div>
+  <div class="card mb-24">
+    <div class="watchlist-wrap">
+      <table id="watchlistTable">
+        <thead>
+          <tr>
+            <th onclick="sortTable('asset')">ASSET <span id="sort-asset"></span></th>
+            <th onclick="sortTable('price')">PRICE <span id="sort-price"></span></th>
+            <th onclick="sortTable('change24h')">24H % <span id="sort-change24h"></span></th>
+            <th onclick="sortTable('signal')">SIGNAL <span id="sort-signal"></span></th>
+            <th onclick="sortTable('confidence')">CONF <span id="sort-confidence"></span></th>
+            <th>COMMENT</th>
+          </tr>
+        </thead>
+        <tbody id="watchlistBody">
+          <!-- Injected by JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       SECTION 6: SIGNAL SUMMARY
+       ============================================================ -->
+  <div class="mb-16"><div class="section-title">SIGNAL SUMMARY</div></div>
+  <div class="card mb-24">
+    <div class="summary-lines" id="signalSummary">
+      <!-- Injected by JS -->
+    </div>
+  </div>
+
+  <!-- ============================================================
+       FOOTER
+       ============================================================ -->
+  <div class="footer">
+    <strong>SIGNAL LAB</strong> — This dashboard is informational only. All signals are simplified relative
+    assessments derived from publicly available market data. Prices displayed in <strong>GBP (£)</strong>.
+    Nothing displayed here constitutes financial advice,
+    investment guidance, or a recommendation to buy or sell any asset. Past market conditions do not guarantee
+    future outcomes. Always do your own research.
+    <br><br>
+    Data sources: CoinGecko API · Alternative.me Fear & Greed Index
+    · Auto-refresh: 5 minutes
+  </div>
+
+  <!-- Konami hint (very subtle) -->
+  <div class="konami-hint">↑↑↓↓←→←→BA</div>
+
+</div><!-- end .wrap -->
+
+<!-- ============================================================
+     JAVASCRIPT — All logic is here
+     ============================================================ -->
+<script>
+/* ============================================================
+   CONFIG — Edit these values to customise behaviour
+   ============================================================ */
+const CONFIG = {
+  // Auto-refresh interval in milliseconds (5 minutes = 300000)
+  refreshInterval: 300000,
+
+  // Watchlist coins — add/remove CoinGecko IDs here
+  // Format: { id: 'coingecko-id', symbol: 'TICKER', name: 'Display Name' }
+  watchlist: [
+    { id: 'bitcoin',   symbol: 'BTC',  name: 'Bitcoin'   },
+    { id: 'ethereum',  symbol: 'ETH',  name: 'Ethereum'  },
+    { id: 'ripple',    symbol: 'XRP',  name: 'XRP'       },
+    { id: 'solana',    symbol: 'SOL',  name: 'Solana'    },
+    { id: 'cardano',   symbol: 'ADA',  name: 'Cardano'   },
+    { id: 'chainlink', symbol: 'LINK', name: 'Chainlink' },
+  ],
+
+  // ============================================================
+  // SIGNAL THRESHOLDS — Edit these to adjust signal sensitivity
+  // ============================================================
+  thresholds: {
+    // 24h % change to be considered "bullish" vs "bearish"
+    bullish24h:  3.0,   // above this = bullish momentum
+    bearish24h: -3.0,   // below this = bearish momentum
+
+    // 7d % change
+    bullish7d:   8.0,
+    bearish7d:  -8.0,
+
+    // BTC dominance thresholds
+    domHighRisk:    52,  // above = altcoins under pressure (RISK OFF)
+    domLowAltFriendly: 48, // below = ALT FRIENDLY environment
+
+    // Fear & Greed thresholds
+    extremeFear:  20,
+    fear:         40,
+    neutral:      60,
+    greed:        80,
+    // above 80 = extreme greed
+
+    // Volatility detection (avg abs 24h change of BTC+ETH)
+    voltCalm:       2.0,
+    voltBuilding:   5.0,
+    voltVolatile:   10.0,
+    // above voltVolatile = CHAOTIC
+  }
+};
+
+/* ============================================================
+   STATE — Global state object
+   ============================================================ */
+let STATE = {
+  prices:   {},
+  global:   {},
+  fearGreed: {},
+  isSample: false,
+  sortKey:  'asset',
+  sortDir:  1,
+  theme:    localStorage.getItem('slabTheme') || 'dark',
+};
+
+/* ============================================================
+   SAMPLE / FALLBACK DATA
+   Used when APIs fail or CORS blocks
+   ============================================================ */
+const SAMPLE_DATA = {
+  prices: {
+    bitcoin:   { gbp: 53200, gbp_24h_change: 2.1,  gbp_7d_change: 5.8  },
+    ethereum:  { gbp: 2770,  gbp_24h_change: 1.4,  gbp_7d_change: 3.2  },
+    ripple:    { gbp: 0.43,  gbp_24h_change: -0.8, gbp_7d_change: -2.1 },
+    solana:    { gbp: 125,   gbp_24h_change: 3.7,  gbp_7d_change: 11.2 },
+    cardano:   { gbp: 0.33,  gbp_24h_change: 0.3,  gbp_7d_change: -1.4 },
+    chainlink: { gbp: 10.9,  gbp_24h_change: 1.9,  gbp_7d_change: 4.5  },
+  },
+  global: {
+    btc_dominance: 52.3,
+    total_market_cap: { usd: 2.41e12 },
+  },
+  fearGreed: {
+    value: 58,
+    value_classification: 'Greed',
+  }
+};
+
+/* ============================================================
+   THEME
+   ============================================================ */
+function applyTheme() {
+  document.documentElement.setAttribute('data-theme', STATE.theme);
+  localStorage.setItem('slabTheme', STATE.theme);
+}
+function toggleTheme() {
+  STATE.theme = STATE.theme === 'dark' ? 'light' : 'dark';
+  applyTheme();
+}
+applyTheme();
+
+/* ============================================================
+   API CALLS
+   ============================================================ */
+
+// CoinGecko simple price endpoint — GBP
+async function fetchPrices(ids) {
+  const joined = ids.join(',');
+  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${joined}&vs_currencies=gbp&include_24hr_change=true&include_7d_change=true`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('CoinGecko prices failed');
+  return res.json();
+}
+
+// CoinGecko global data (for BTC dominance)
+async function fetchGlobal() {
+  const res = await fetch('https://api.coingecko.com/api/v3/global');
+  if (!res.ok) throw new Error('CoinGecko global failed');
+  const data = await res.json();
+  return {
+    btc_dominance: data.data.market_cap_percentage.btc,
+    total_market_cap: data.data.total_market_cap,
+  };
+}
+
+// Alternative.me Fear & Greed
+async function fetchFearGreed() {
+  const res = await fetch('https://api.alternative.me/fng/?limit=1');
+  if (!res.ok) throw new Error('Fear & Greed failed');
+  const data = await res.json();
+  return {
+    value: parseInt(data.data[0].value),
+    value_classification: data.data[0].value_classification,
+  };
+}
+
+/* ============================================================
+   MAIN DATA LOAD
+   ============================================================ */
+async function loadData() {
+  const ids = CONFIG.watchlist.map(c => c.id);
+  const results = await Promise.allSettled([
+    fetchPrices(ids),
+    fetchGlobal(),
+    fetchFearGreed(),
+  ]);
+
+  let priceData = null, globalData = null, fgData = null;
+  let anyFailed = false;
+
+  if (results[0].status === 'fulfilled') priceData  = results[0].value;
+  else anyFailed = true;
+
+  if (results[1].status === 'fulfilled') globalData = results[1].value;
+  else anyFailed = true;
+
+  if (results[2].status === 'fulfilled') fgData = results[2].value;
+  else anyFailed = true;
+
+  if (anyFailed || !priceData || !globalData || !fgData) {
+    // Fall back to sample data
+    STATE.isSample = true;
+    STATE.prices   = SAMPLE_DATA.prices;
+    STATE.global   = SAMPLE_DATA.global;
+    STATE.fearGreed = SAMPLE_DATA.fearGreed;
+  } else {
+    STATE.isSample = false;
+    STATE.prices   = priceData;
+    STATE.global   = globalData;
+    STATE.fearGreed = fgData;
+  }
+}
+
+/* ============================================================
+   SIGNAL LOGIC
+   All weighting and decision logic is here.
+   ============================================================ */
+
+// Returns a numeric signal score -100 to +100 for a coin
+function coinSignalScore(coinId) {
+  const p = STATE.prices[coinId];
+  if (!p) return 0;
+  const c24 = p.gbp_24h_change || 0;
+  const c7  = p.gbp_7d_change  || 0;
+  // Weighted: 7d trend has more weight for signal
+  let score = (c24 * 0.4) + (c7 * 0.6);
+  return Math.max(-100, Math.min(100, score * 4)); // scale to -100..100
+}
+
+// Derive coin trend label and strength (0-100)
+function coinTrend(coinId) {
+  const score = coinSignalScore(coinId);
+  let label, strength, badgeClass;
+
+  if (score > 30) {
+    label = 'Strong bullish momentum';
+    strength = Math.min(100, 50 + score);
+    badgeClass = 'badge-green';
+  } else if (score > 10) {
+    label = 'Bullish momentum building';
+    strength = 40 + score;
+    badgeClass = 'badge-teal';
+  } else if (score > -10) {
+    label = 'Neutral / sideways';
+    strength = 40;
+    badgeClass = 'badge-muted';
+  } else if (score > -30) {
+    label = 'Bearish pressure present';
+    strength = 40 - Math.abs(score) / 2;
+    badgeClass = 'badge-amber';
+  } else {
+    label = 'Weak / choppy / distributing';
+    strength = Math.max(5, 30 - Math.abs(score) / 2);
+    badgeClass = 'badge-red';
+  }
+
+  return { label, strength: Math.round(strength), badgeClass, score };
+}
+
+// BTC Dominance analysis
+function domAnalysis() {
+  const dom = STATE.global.btc_dominance || 52;
+  const t = CONFIG.thresholds;
+  let riskBadge, riskLabel, explain, detailText;
+
+  if (dom > t.domHighRisk) {
+    riskBadge = '<span class="badge badge-red">RISK OFF</span>';
+    riskLabel = 'Altcoins under pressure';
+    explain = 'BTC dominance is elevated. Capital is concentrating in Bitcoin. Altcoin conditions are generally unfavourable.';
+    detailText = 'When dominance climbs above ~52%, it typically signals that money is flowing into BTC safety rather than altcoins. This often suppresses alt performance even when BTC moves up.';
+  } else if (dom < t.domLowAltFriendly) {
+    riskBadge = '<span class="badge badge-green">ALT FRIENDLY</span>';
+    riskLabel = 'Altcoin season possible';
+    explain = 'BTC dominance is low. Capital is spreading into altcoins. Broader alt exposure may be rewarded.';
+    detailText = 'Falling dominance below ~48% suggests alts are absorbing inflows. This can precede strong altcoin moves, though it also means BTC is underperforming relatively.';
+  } else {
+    riskBadge = '<span class="badge badge-muted">NEUTRAL</span>';
+    riskLabel = 'Mixed conditions';
+    explain = 'BTC dominance is in a neutral zone. No clear capital rotation trend yet. Selective exposure is appropriate.';
+    detailText = 'Between 48-52% dominance, conditions are balanced. Some alts may outperform but the environment is not broadly alt-friendly. Quality over quantity in alt selection.';
+  }
+
+  return { dom: dom.toFixed(1), riskBadge, riskLabel, explain, detailText };
+}
+
+// Fear & Greed interpretation
+function fgAnalysis() {
+  const val = STATE.fearGreed.value || 50;
+  const t = CONFIG.thresholds;
+  let color, label, text;
+
+  if (val <= t.extremeFear) {
+    color = '#e03050';
+    label = 'EXTREME FEAR';
+    text = 'Historically, extreme fear in markets can mark accumulation opportunities for patient long-term holders. Fear creates price.';
+  } else if (val <= t.fear) {
+    color = '#e07820';
+    label = 'FEAR';
+    text = 'Market participants are cautious. For long-term investors, fear zones are often where value forms. Patience is key.';
+  } else if (val <= t.neutral) {
+    color = '#d4a843';
+    label = 'NEUTRAL';
+    text = 'Sentiment is balanced. No extremes to exploit. Markets may move sideways or require a catalyst. Watch for trend breaks.';
+  } else if (val <= t.greed) {
+    color = '#1fb8a8';
+    label = 'GREED';
+    text = 'Markets are feeling confident. Momentum favours longs but greed requires caution — overextension risk rises here.';
+  } else {
+    color = '#22c97a';
+    label = 'EXTREME GREED';
+    text = 'Extreme greed is a risk signal. Markets can stay greedy longer than expected, but risk of sharp corrections increases. Consider tightening positions.';
+  }
+
+  return { val, color, label, text };
+}
+
+// Volatility assessment based on avg abs 24h move of BTC + ETH
+function voltAnalysis() {
+  const btcC = Math.abs(STATE.prices.bitcoin?.gbp_24h_change  || 0);
+  const ethC = Math.abs(STATE.prices.ethereum?.gbp_24h_change || 0);
+  const avg = (btcC + ethC) / 2;
+  const t = CONFIG.thresholds;
+  let state, badgeClass, explain, color;
+
+  if (avg <= t.voltCalm) {
+    state = 'CALM';
+    badgeClass = 'badge-teal';
+    explain = 'Market movement is subdued. Low volatility can precede breakout moves, but can also indicate low participation. Good for steady accumulation.';
+    color = 'var(--teal)';
+  } else if (avg <= t.voltBuilding) {
+    state = 'BUILDING PRESSURE';
+    badgeClass = 'badge-gold';
+    explain = 'Volatility is increasing. The market is waking up. Direction is not yet confirmed. Watch BTC trend for guidance.';
+    color = 'var(--gold)';
+  } else if (avg <= t.voltVolatile) {
+    state = 'VOLATILE';
+    badgeClass = 'badge-amber';
+    explain = 'Significant intraday moves are occurring. Leverage risk is elevated. Long-term accumulation logic still applies, but entries matter more.';
+    color = 'var(--amber)';
+  } else {
+    state = 'CHAOTIC';
+    badgeClass = 'badge-red';
+    explain = 'Extreme volatility detected. Markets are in a reactive state. Reduce position risk where possible. Wait for structure to re-form.';
+    color = 'var(--rose)';
+  }
+
+  return { state, badgeClass, explain, color };
+}
+
+// ============================================================
+// MARKET MODE ENGINE — Weighted calculation
+// ============================================================
+// Weights (must sum to 1.0):
+//   BTC signal:        0.30
+//   ETH signal:        0.15
+//   BTC dominance:     0.20
+//   Fear & Greed:      0.20
+//   Volatility:        0.15
+function computeMarketMode() {
+  const t = CONFIG.thresholds;
+
+  // BTC score: +1 strongly bullish, -1 strongly bearish
+  const btcScore = coinSignalScore('bitcoin')  / 100;
+  const ethScore = coinSignalScore('ethereum') / 100;
+
+  // Dominance: positive = alt-friendly (bearish btc dom), negative = risk off
+  const dom = STATE.global.btc_dominance || 52;
+  const domScore = -(dom - 50) / 10; // normalize: 0 = neutral, negative = high dom
+
+  // Fear & Greed: map to -1..+1 (50 = 0)
+  const fg = STATE.fearGreed.value || 50;
+  const fgScore = (fg - 50) / 50;
+
+  // Volatility: negative modifier if chaotic
+  const volt = voltAnalysis();
+  let voltScore = 0;
+  if (volt.state === 'CHAOTIC')          voltScore = -0.8;
+  else if (volt.state === 'VOLATILE')    voltScore = -0.3;
+  else if (volt.state === 'BUILDING PRESSURE') voltScore = 0.1;
+  else                                   voltScore = 0.2;
+
+  // Weighted composite
+  const composite =
+    btcScore  * 0.30 +
+    ethScore  * 0.15 +
+    domScore  * 0.20 +
+    fgScore   * 0.20 +
+    voltScore * 0.15;
+
+  // Map composite to mode
+  let mode, modeColor, badgeClass, explain;
+  const conf = Math.round(Math.min(95, Math.max(30, 50 + Math.abs(composite) * 60)));
+
+  if (composite > 0.3) {
+    mode = 'AGGRESSIVE LONG';
+    modeColor = 'var(--green)';
+    badgeClass = 'badge-green';
+    explain = `Strong bullish signals are aligning. BTC momentum is positive, sentiment is constructive, and volatility is manageable. The environment favours building positions with conviction. Maintain stops and do not over-leverage.`;
+  } else if (composite > 0.08) {
+    mode = 'ACCUMULATE';
+    modeColor = 'var(--teal)';
+    badgeClass = 'badge-teal';
+    explain = `Conditions are broadly supportive for patient accumulation. BTC trend is leaning positive and risk signals are not elevated. This is not a rush — steady, disciplined entries over time suit the current environment.`;
+  } else if (composite > -0.1) {
+    mode = 'WAIT';
+    modeColor = 'var(--gold)';
+    badgeClass = 'badge-gold';
+    explain = `Signals are mixed or in conflict. No clear directional edge exists right now. The best move may be to hold current positions, watch for structure to develop, and avoid forcing new entries.`;
+  } else {
+    mode = 'REDUCE RISK';
+    modeColor = 'var(--rose)';
+    badgeClass = 'badge-red';
+    explain = `Multiple signals are pointing to increased risk. BTC trend is weak or negative, volatility is elevated, and sentiment conditions are unfavourable. Reducing exposure or moving to stable positions is the prudent response.`;
+  }
+
+  return { mode, modeColor, badgeClass, explain, conf, composite };
+}
+
+// ============================================================
+// XRP-SPECIFIC ANALYSIS
+// ============================================================
+function xrpAnalysis() {
+  const p = STATE.prices.ripple;
+  if (!p) return null;
+  const c24 = p.gbp_24h_change || 0;
+  const c7  = p.gbp_7d_change  || 0;
+  const trend = coinTrend('ripple');
+
+  // Relative strength vs BTC
+  const btcC7 = STATE.prices.bitcoin?.gbp_7d_change || 0;
+  const relStr = c7 - btcC7;
+
+  // Status tag
+  let statusTag, statusClass, paragraph;
+
+  if (c24 > 6 || c7 > 15) {
+    statusTag = 'MOVING';
+    statusClass = 'badge-green';
+    paragraph = `XRP is showing notable momentum with a ${c24.toFixed(1)}% intraday move. Volume and price action suggest active participation. This phase typically tests overhead resistance zones. Watching whether current momentum converts to sustained structure or fades into consolidation.`;
+  } else if (c7 > 5 && relStr > 3) {
+    statusTag = 'BREAKOUT WATCH';
+    statusClass = 'badge-teal';
+    paragraph = `XRP is quietly outperforming the broader market on the weekly. This type of relative strength accumulation often precedes larger moves. No confirmation yet, but the setup is forming. Worth watching key resistance levels closely.`;
+  } else if (c24 > -2 && c7 > -5) {
+    statusTag = 'BUILDING';
+    statusClass = 'badge-gold';
+    paragraph = `XRP is in a consolidation phase — price is compressing without significant distribution. This kind of lateral movement can represent accumulation by larger participants, particularly when BTC conditions are not aggressively bullish. Patient holding is appropriate.`;
+  } else {
+    statusTag = 'SLEEPING';
+    statusClass = 'badge-muted';
+    paragraph = `XRP is quiet, underperforming or drifting sideways without meaningful conviction. No catalyst is apparent in the current window. Long-term thesis remains intact but short-term momentum is absent. Hold positions without adding.`;
+  }
+
+  const relStrText = relStr > 0
+    ? `+${relStr.toFixed(1)}% vs BTC (outperforming)`
+    : `${relStr.toFixed(1)}% vs BTC (underperforming)`;
+
+  return { statusTag, statusClass, paragraph, relStrText, trend };
+}
+
+// ============================================================
+// WATCHLIST SIGNAL GENERATION
+// ============================================================
+function watchlistSignal(coinId) {
+  const t = coinTrend(coinId);
+  const score = t.score;
+  let signal, signalClass, comment, confidence;
+
+  if (score > 30) {
+    signal = 'STRONG BUY';
+    signalClass = 'badge-green';
+    comment = 'Momentum strongly positive';
+    confidence = Math.min(90, 55 + score / 3);
+  } else if (score > 10) {
+    signal = 'BUY';
+    signalClass = 'badge-teal';
+    comment = 'Building momentum, watch trend';
+    confidence = Math.min(75, 45 + score / 2);
+  } else if (score > -10) {
+    signal = 'HOLD';
+    signalClass = 'badge-muted';
+    comment = 'No clear directional edge';
+    confidence = 45;
+  } else if (score > -30) {
+    signal = 'CAUTION';
+    signalClass = 'badge-amber';
+    comment = 'Bearish pressure, reduce risk';
+    confidence = Math.min(70, 45 + Math.abs(score) / 2);
+  } else {
+    signal = 'AVOID';
+    signalClass = 'badge-red';
+    comment = 'Weak structure, no entry';
+    confidence = Math.min(85, 55 + Math.abs(score) / 3);
+  }
+
+  return { signal, signalClass, comment, confidence: Math.round(confidence) };
+}
+
+// ============================================================
+// SIGNAL SUMMARY LINES
+// ============================================================
+function buildSummaryLines(mode, dom, fg, volt) {
+  const lines = [];
+
+  // BTC trend commentary
+  const btcT = coinTrend('bitcoin');
+  if (btcT.score > 15)
+    lines.push('BTC trend is positive and remains the primary market driver.');
+  else if (btcT.score < -15)
+    lines.push('BTC trend is bearish — expect broad market pressure until structure recovers.');
+  else
+    lines.push('BTC trend is neutral. No strong directional signal from the market leader yet.');
+
+  // Alt conditions
+  if (dom.dom < CONFIG.thresholds.domLowAltFriendly)
+    lines.push('Alt conditions are improving. Capital is diversifying beyond BTC.');
+  else if (dom.dom > CONFIG.thresholds.domHighRisk)
+    lines.push('Alt conditions are constrained. BTC dominance elevated — selectivity matters.');
+  else
+    lines.push('Alt conditions are mixed. Individual quality setups still possible.');
+
+  // Risk
+  if (volt.state === 'CHAOTIC' || volt.state === 'VOLATILE')
+    lines.push('Market risk is elevated due to high volatility. Position sizing caution advised.');
+  else
+    lines.push(`Risk currently ${volt.state === 'CALM' ? 'low' : 'moderate'}. Conditions allow for measured exposure.`);
+
+  // Best posture
+  if (mode.mode === 'AGGRESSIVE LONG')
+    lines.push('Best posture: aggressive long — high conviction entries with defined risk.');
+  else if (mode.mode === 'ACCUMULATE')
+    lines.push('Best posture: patient accumulation. Prioritise quality assets and stagger entries.');
+  else if (mode.mode === 'WAIT')
+    lines.push('Best posture: observe and wait. Let the market show its hand before committing.');
+  else
+    lines.push('Best posture: risk reduction. Protect existing gains. Cash is a position.');
+
+  // F&G note
+  if (fg.val <= 30)
+    lines.push('Sentiment is fearful — historically a long-term opportunity window.');
+  else if (fg.val >= 75)
+    lines.push('Sentiment is greedy — be aware of overextension and late-cycle risks.');
+
+  return lines;
+}
+
+/* ============================================================
+   RENDER FUNCTIONS
+   ============================================================ */
+
+function fmtPrice(val) {
+  if (val >= 1000) return '£' + val.toLocaleString('en-GB', { maximumFractionDigits: 0 });
+  if (val >= 1)    return '£' + val.toFixed(2);
+  return '£' + val.toFixed(4);
+}
+
+function fmtChange(val) {
+  if (val === undefined || val === null) return { txt: '—', cls: 'change-neu' };
+  const txt = (val >= 0 ? '+' : '') + val.toFixed(2) + '%';
+  const cls = val > 0.5 ? 'change-pos' : val < -0.5 ? 'change-neg' : 'change-neu';
+  return { txt, cls };
+}
+
+function renderTrendCards() {
+  const coins = [
+    { id: 'bitcoin',  symbol: 'BTC', label: 'Bitcoin'  },
+    { id: 'ethereum', symbol: 'ETH', label: 'Ethereum' },
+    { id: 'ripple',   symbol: 'XRP', label: 'XRP'      },
+    { id: 'solana',   symbol: 'SOL', label: 'Solana'   },
+  ];
+
+  const container = document.getElementById('trendCards');
+  container.innerHTML = coins.map(c => {
+    const p = STATE.prices[c.id];
+    if (!p) return `<div class="card coin-card"><div class="coin-symbol">${c.symbol}</div><div class="coin-price">—</div></div>`;
+
+    const c24 = fmtChange(p.gbp_24h_change);
+    const c7  = fmtChange(p.gbp_7d_change);
+    const t   = coinTrend(c.id);
+
+    const barColor = t.score > 0 ? 'var(--green)' : t.score < 0 ? 'var(--rose)' : 'var(--neutral)';
+    const barWidth = Math.round(t.strength);
+
+    return `
+      <div class="card coin-card">
+        <div class="coin-symbol">${c.symbol} · ${c.label}</div>
+        <div class="coin-price">${fmtPrice(p.gbp)}</div>
+        <div class="coin-changes">
+          <span class="change-val ${c24.cls}" title="24h">24H ${c24.txt}</span>
+          <span class="change-val ${c7.cls}" title="7d">7D ${c7.txt}</span>
+        </div>
+        <span class="badge ${t.badgeClass}" style="font-size:8.5px">${
+          t.score > 10 ? 'BULLISH' : t.score < -10 ? 'BEARISH' : 'NEUTRAL'
+        }</span>
+        <div class="strength-row" style="margin-top:10px">
+          <span class="strength-label">STRENGTH</span>
+          <div class="bar-wrap" style="flex:1">
+            <div class="bar-fill" style="width:${barWidth}%; background:${barColor}"></div>
+          </div>
+          <span class="strength-label">${barWidth}</span>
+        </div>
+        <div class="coin-trend-label">${t.label}</div>
+      </div>`;
+  }).join('');
+}
+
+function renderModeEngine() {
+  const mode = computeMarketMode();
+  document.getElementById('modeState').textContent    = mode.mode;
+  document.getElementById('modeState').style.color    = mode.modeColor;
+  document.getElementById('modeExplain').textContent  = mode.explain;
+  document.getElementById('confScore').textContent    = mode.conf;
+  document.getElementById('confScore').style.color    = mode.modeColor;
+  document.getElementById('modeConfBar').style.width  = mode.conf + '%';
+  document.getElementById('modeConfBar').style.background = mode.modeColor;
+  document.getElementById('modeBadge').innerHTML      = `<span class="badge ${mode.badgeClass}">${mode.mode}</span>`;
+
+  // Header badge
+  const hb = document.getElementById('headerModeBadge');
+  hb.textContent = mode.mode;
+  hb.style.color = mode.modeColor;
+  hb.style.borderColor = mode.modeColor;
+  hb.style.background = 'transparent';
+
+  return mode;
+}
+
+function renderDominance() {
+  const d = domAnalysis();
+  document.getElementById('btcDomValue').textContent  = d.dom + '%';
+  document.getElementById('btcDomBadge').innerHTML    = d.riskBadge;
+  document.getElementById('btcDomExplain').textContent = d.explain;
+  document.getElementById('domDetailText').textContent = d.detailText;
+  return d;
+}
+
+function renderFearGreed() {
+  const fg = fgAnalysis();
+  document.getElementById('fgScore').textContent = fg.val;
+  document.getElementById('fgScore').style.color = fg.color;
+  document.getElementById('fgLabel').textContent = fg.label;
+  document.getElementById('fgLabel').style.color = fg.color;
+  document.getElementById('fgText').textContent  = fg.text;
+  return fg;
+}
+
+function renderVolatility() {
+  const v = voltAnalysis();
+  document.getElementById('voltState').textContent  = v.state;
+  document.getElementById('voltState').style.color  = v.color;
+  document.getElementById('voltBadge').innerHTML    = `<span class="badge ${v.badgeClass}">${v.state}</span>`;
+  document.getElementById('voltExplain').textContent = v.explain;
+  return v;
+}
+
+function renderXRP() {
+  const xrp = xrpAnalysis();
+  if (!xrp) return;
+
+  const p = STATE.prices.ripple;
+  const c24 = fmtChange(p.gbp_24h_change);
+
+  document.getElementById('xrpPriceBig').textContent    = fmtPrice(p.gbp);
+  document.getElementById('xrpChangeBig').innerHTML     = `<span class="change-val ${c24.cls}">${c24.txt} 24H</span>`;
+  document.getElementById('xrpStatusTag').innerHTML     = `<span class="badge ${xrp.statusClass}" style="font-size:10px; padding:5px 10px">${xrp.statusTag}</span>`;
+  document.getElementById('xrpBadges').innerHTML        = `
+    <span class="badge badge-muted">TREND: ${xrp.trend.score > 0 ? '▲' : '▼'} ${xrp.trend.label.split(' ')[0].toUpperCase()}</span>
+    <span class="badge badge-muted">REL STR: ${xrp.relStrText}</span>
+  `;
+  document.getElementById('xrpParagraph').textContent   = xrp.paragraph;
+}
+
+function renderWatchlist() {
+  const rows = CONFIG.watchlist.map(c => {
+    const p = STATE.prices[c.id];
+    if (!p) return null;
+    const c24 = fmtChange(p.gbp_24h_change);
+    const sig = watchlistSignal(c.id);
+    return {
+      asset: c.symbol,
+      name: c.name,
+      price: p.gbp,
+      change24h: p.gbp_24h_change || 0,
+      signal: sig.signal,
+      signalClass: sig.signalClass,
+      confidence: sig.confidence,
+      comment: sig.comment,
+      _c24: c24,
+    };
+  }).filter(Boolean);
+
+  // Sort
+  rows.sort((a, b) => {
+    let va = a[STATE.sortKey], vb = b[STATE.sortKey];
+    if (typeof va === 'string') va = va.toLowerCase(), vb = vb.toLowerCase();
+    return (va < vb ? -1 : va > vb ? 1 : 0) * STATE.sortDir;
+  });
+
+  // Update sort indicators
+  ['asset','price','change24h','signal','confidence'].forEach(k => {
+    const el = document.getElementById('sort-' + k);
+    if (!el) return;
+    el.textContent = STATE.sortKey === k ? (STATE.sortDir === 1 ? ' ▲' : ' ▼') : '';
+  });
+
+  const tbody = document.getElementById('watchlistBody');
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td class="td-asset">${r.asset} <span style="color:var(--text-dim); font-size:10px">${r.name}</span></td>
+      <td class="td-price">${fmtPrice(r.price)}</td>
+      <td><span class="change-val ${r._c24.cls}">${r._c24.txt}</span></td>
+      <td><span class="badge ${r.signalClass}" style="font-size:8.5px">${r.signal}</span></td>
+      <td><span style="font-family:var(--font-mono); font-size:12px; color:var(--text-muted)">${r.confidence}%</span></td>
+      <td class="td-comment">${r.comment}</td>
+    </tr>
+  `).join('');
+}
+
+function renderSummary(mode, dom, fg, volt) {
+  const lines = buildSummaryLines(mode, dom, fg, volt);
+  document.getElementById('signalSummary').innerHTML = lines.map(l =>
+    `<div class="summary-line">${l}</div>`
+  ).join('');
+}
+
+function renderTimestamp() {
+  const now = new Date();
+  const ts = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const ds = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  document.getElementById('lastUpdated').textContent = `${ds} ${ts}`;
+}
+
+function renderAll() {
+  renderTrendCards();
+  const mode = renderModeEngine();
+  const dom  = renderDominance();
+  const fg   = renderFearGreed();
+  const volt = renderVolatility();
+  renderXRP();
+  renderWatchlist();
+  renderSummary(mode, dom, fg, volt);
+  renderTimestamp();
+
+  // Sample banner
+  const banner = document.getElementById('sampleBanner');
+  banner.classList.toggle('hidden', !STATE.isSample);
+
+  // Live dot
+  const dot = document.getElementById('liveDot');
+  dot.classList.toggle('red', STATE.isSample);
+}
+
+/* ============================================================
+   SORT TABLE
+   ============================================================ */
+function sortTable(key) {
+  if (STATE.sortKey === key) STATE.sortDir *= -1;
+  else { STATE.sortKey = key; STATE.sortDir = 1; }
+  renderWatchlist();
+}
+
+/* ============================================================
+   COLLAPSIBLE
+   ============================================================ */
+function toggleCollapse(id, btn) {
+  const body = document.getElementById(id);
+  const open = body.classList.toggle('open');
+  btn.classList.toggle('open', open);
+}
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+/* ============================================================
+   REFRESH
+   ============================================================ */
+async function refreshData() {
+  const btn = document.getElementById('refreshBtn');
+  btn.classList.add('loading');
+  btn.textContent = '⟳ LOADING';
+
+  try {
+    await loadData();
+    renderAll();
+    showToast(STATE.isSample ? '⚠ SAMPLE DATA — LIVE UNAVAILABLE' : '✓ DATA REFRESHED');
+  } catch(e) {
+    showToast('⚠ REFRESH FAILED');
+  }
+
+  btn.classList.remove('loading');
+  btn.textContent = '⟳ REFRESH';
+}
+
+/* ============================================================
+   INITIALISE
+   ============================================================ */
+async function init() {
+  await loadData();
+  renderAll();
+
+  // Hide loading overlay
+  const overlay = document.getElementById('loadingOverlay');
+  overlay.classList.add('hidden');
+  setTimeout(() => overlay.style.display = 'none', 500);
+
+  // Auto-refresh
+  setInterval(refreshData, CONFIG.refreshInterval);
+}
+
+/* ============================================================
+   KONAMI CODE EASTER EGG
+   Sequence: ↑ ↑ ↓ ↓ ← → ← → B A
+   ============================================================ */
+const KONAMI_SEQUENCE = [
+  'ArrowUp','ArrowUp','ArrowDown','ArrowDown',
+  'ArrowLeft','ArrowRight','ArrowLeft','ArrowRight',
+  'b','a'
+];
+let konamiIndex = 0;
+
+document.addEventListener('keydown', (e) => {
+  const key = e.key;
+  if (key === KONAMI_SEQUENCE[konamiIndex]) {
+    konamiIndex++;
+    if (konamiIndex === KONAMI_SEQUENCE.length) {
+      konamiIndex = 0;
+      openKonami();
+    }
+  } else {
+    // Reset if wrong key, but allow restart if first key
+    konamiIndex = key === KONAMI_SEQUENCE[0] ? 1 : 0;
+  }
+});
+
+function openKonami() {
+  const overlay = document.getElementById('konamiOverlay');
+  overlay.classList.add('active');
+  // Spawn falling rose petals
+  spawnPetals(overlay);
+}
+
+function closeKonami() {
+  const overlay = document.getElementById('konamiOverlay');
+  overlay.classList.remove('active');
+  // Remove petals
+  overlay.querySelectorAll('.petal').forEach(p => p.remove());
+}
+
+function spawnPetals(container) {
+  const petals = ['🌹','🌸','🌺','💮','🌷'];
+  for (let i = 0; i < 22; i++) {
+    const el = document.createElement('div');
+    el.className = 'petal';
+    el.textContent = petals[Math.floor(Math.random() * petals.length)];
+    el.style.left = Math.random() * 100 + 'vw';
+    el.style.animationDuration = (3 + Math.random() * 5) + 's';
+    el.style.animationDelay = (Math.random() * 4) + 's';
+    el.style.fontSize = (12 + Math.random() * 20) + 'px';
+    container.appendChild(el);
+  }
+}
+
+// Boot
+init();
+</script>
+
+</body>
+</html>
